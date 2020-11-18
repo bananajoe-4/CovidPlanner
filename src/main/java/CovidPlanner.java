@@ -69,6 +69,21 @@ public class CovidPlanner {
             //throw new IllegalStateException("Could not parse the google api response properly.", e);
         }
 
+        // Landkreis für RKI API ermitteln
+        String geoDistrict = "";
+        WebTarget geocodeApi = client.target("https://maps.googleapis.com/maps/api/geocode/josn")
+                .queryParam("address", "München")
+                .queryParam("sensor", "false")
+                .queryParam("key", "AIzaSyDMQoPhRGqPxTGNctZ5Mh3z1AIJ9uzQE2A");
+        String geocodeResponse = geocodeApi.request(MediaType.APPLICATION_JSON).get(String.class);
+        try (JsonReader reader = Json.createReader(new StringReader(geocodeResponse));) {
+            JsonObject jsonObject = reader.readObject();
+            geoDistrict = jsonObject.getJsonArray("results").getJsonObject(0).getJsonArray("address_components")
+                    .getJsonObject(1).getString("long_name");
+        } catch (Exception e) {
+            System.out.println("could not parse google geocode api response");
+        }
+
         // Startort und Zielort nach Faellen abfragen.
         WebTarget rkiApi = client.target("https://rki-covid-api.now.sh/api/districts");
         String rkiResponse = rkiApi.request(MediaType.APPLICATION_JSON).get(String.class);
