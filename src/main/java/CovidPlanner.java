@@ -52,8 +52,8 @@ public class CovidPlanner {
         // RoutePlanner (singleUserLock) sperren (keine neuen Anfragen entgegen nehmen)
         SingleUserLock = true;
         // Route planen (Gesammtdauer)
-        String origin = "Munich";
-        String destination = "Berlin";
+        String origin = "M\u00FCnchen";
+        String destination = "Leipzig";
         WebTarget mapsApi = client.target("https://maps.googleapis.com/maps/api/distancematrix/json")
                 .queryParam("units", "imperial")
                 .queryParam("origins", origin)
@@ -71,7 +71,7 @@ public class CovidPlanner {
 
         // Landkreis für RKI API ermitteln
         String geoDistrict = "";
-        WebTarget geocodeApi = client.target("https://maps.googleapis.com/maps/api/geocode/josn")
+        WebTarget geocodeApi = client.target("https://maps.googleapis.com/maps/api/geocode/json")
                 .queryParam("address", "München")
                 .queryParam("sensor", "false")
                 .queryParam("key", "AIzaSyDMQoPhRGqPxTGNctZ5Mh3z1AIJ9uzQE2A");
@@ -88,7 +88,6 @@ public class CovidPlanner {
         WebTarget rkiApi = client.target("https://rki-covid-api.now.sh/api/districts");
         String rkiResponse = rkiApi.request(MediaType.APPLICATION_JSON).get(String.class);
         System.out.println(rkiResponse);
-        origin = "München"; // TODO: Nur debug hilfsmittel...
         System.out.println(origin);
         int casesOrigin = -1;
         int casesDestination = -1;
