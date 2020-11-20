@@ -8,8 +8,6 @@ import javax.ws.rs.client.Client;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.MediaType;
-import java.io.IOError;
-import java.io.IOException;
 import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,9 +20,10 @@ public class HueController {
     private static final int WAIT_TIME = 1000;
     private final String bridgeIpAddr;
     private String bridgeUsername = null;
-    private Map<Integer, ScheduledExecutorService> blinkingLamps = new HashMap<>();
-    private static final int BLINK_PERIOD_DURATION = 500;
+    private final Map<Integer, ScheduledExecutorService> blinkingLamps = new HashMap<>();
+    private static final int BLINK_PERIOD_DURATION = 750;
     private final Client client;
+    private final int id = (int) (Math.random() * Integer.MAX_VALUE);
 
     public HueController(String bridgeIpAddr, Client client) {
         if (bridgeIpAddr == null || bridgeIpAddr.length() == 0)
@@ -43,17 +42,21 @@ public class HueController {
     }
 
     public void setLampBlinkMode(int lampId, int color, int periodDuration) {
+        if(blinkingLamps.containsKey(lampId))
+            stopBlinkingLamp(lampId);
+
         Runnable lampBlinker = new Runnable() {
             boolean isOn = true;
+
             public void run() {
-                setLightState(lampId, isOn, color);
+                setLightStateUnsecure(lampId, isOn, color);
                 isOn = !isOn;
             }
         };
 
         ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
         blinkingLamps.put(lampId, executor);
-        executor.scheduleAtFixedRate(lampBlinker, 0, periodDuration/2, TimeUnit.MILLISECONDS);
+        executor.scheduleAtFixedRate(lampBlinker, 0, periodDuration / 2, TimeUnit.MILLISECONDS);
     }
 
     public void setLampBlinkMode(int lampId, int color) {
@@ -66,7 +69,16 @@ public class HueController {
             blinker.shutdownNow();
     }
 
-    public void setLightState(int lampNr, boolean isOn, int color) {
+    public void setLightState(int lampNr, boolean isOn, int color){
+        if(blinkingLamps.containsKey(lampNr)) {
+            System.out.println("called setLightState and cancels blinking of lamp #"+lampNr);
+            stopBlinkingLamp(lampNr);
+        }
+
+        setLightStateUnsecure(lampNr, isOn, color);
+    }
+
+    private void setLightStateUnsecure(int lampNr, boolean isOn, int color) {
         if (color < 0 || color >= 1 << 16)
             throw new IllegalArgumentException("Color darf nur Werte im Bereich [0-65535] annehmen.");
         JsonObjectBuilder jsonBuilder = Json.createObjectBuilder()
@@ -81,26 +93,23 @@ public class HueController {
     }
 
     private void applyLightState(int lampNr, String stateJson) {
-        if (bridgeUsername == null)
-            bridgeUsername = getBridgeUsername();
-
         WebTarget lampStateApi = client.target("http://" + bridgeIpAddr + "/api/" + bridgeUsername + "/lights/" + lampNr + "/state");
         try {
             String hueResponse = lampStateApi.request().put(Entity.json(stateJson), String.class);
-            if(!isSuccessResponse(hueResponse))
-                System.err.println("Failed to set every attribute of lamp #"+lampNr);
-        }catch (ProcessingException e){
+            if (!isSuccessResponse(hueResponse))
+                System.err.println("Failed to set every attribute of lamp #" + lampNr);
+        } catch (ProcessingException e) {
             System.err.println("Failed to connect to the bridge");
             e.printStackTrace();
         }
     }
 
-    private boolean isSuccessResponse(String response){
+    private boolean isSuccessResponse(String response) {
         boolean success = true;
-        try(JsonReader reader = Json.createReader(new StringReader(response))){
+        try (JsonReader reader = Json.createReader(new StringReader(response))) {
             JsonArray responseArray = reader.readArray();
-            for(int index = 0; index < responseArray.size(); ++index){
-                if(!responseArray.getJsonObject(index).containsKey("success"))
+            for (int index = 0; index < responseArray.size(); ++index) {
+                if (!responseArray.getJsonObject(index).containsKey("success"))
                     success = false;
             }
         }

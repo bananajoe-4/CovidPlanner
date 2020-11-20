@@ -17,7 +17,6 @@ import javax.ws.rs.core.MediaType;
 import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Scanner;
 
 @Path("/covid-planner")
 public class CovidPlanner {
@@ -37,27 +36,26 @@ public class CovidPlanner {
     private static final String BRIDGE_IP = "192.168.178.92";
     private static final String BRIDGE_USERNAME = "r0vUXAhhNiHy6CT3oLBlTBMECbykzVobj11KmGyG";
 
-    private Client client;
-    private HueController hueController;
+    private final Client client;
+    private final HueController hueController;
 
-
-    @Path("Test")
-    @GET
-    public String test(){
-        return "test succeeded";
+    public CovidPlanner(){
+        client = ClientBuilder.newClient();
+        hueController = new HueController("localhost", "702322b92a3c03046bf5b83a889c704", client);
     }
 
     @Path("start")
     @POST
     @Produces(MediaType.APPLICATION_JSON)
     public String planRoute(@QueryParam("origin") String origin, @QueryParam("destination") String destination) {
-        System.out.println("Called PlanRoute with: origin = "+origin+" and destination = "+destination);
+        System.out.println("Called PlanRoute with: origin = " + origin + " and destination = " + destination);
         // Gesamtdauer berechnen.
         int duration = getTravelDuration(origin, destination);
 
         // Landkreis für RKI API ermitteln
         String originDistrict = getDistrict(origin);
         String destinationDistrict = getDistrict(destination);
+        System.out.println("originDist: " + originDistrict + " destDist: " + destinationDistrict);
 
         // Startort und Zielort nach Faellen abfragen.
         Map<String, Integer> casesPerDistrict = new HashMap<>();
@@ -66,6 +64,7 @@ public class CovidPlanner {
         getDistrictWeekIncidence(casesPerDistrict);
         int casesOrigin = casesPerDistrict.get(originDistrict);
         int casesDestination = casesPerDistrict.get(destinationDistrict);
+        System.out.println("cases in " + originDistrict + ": " + casesOrigin + ", cases in " + destinationDistrict + ": " + casesDestination);
 
         // Lampen entsprechend schalten.
         setTrafficLight(1, casesOrigin);
@@ -81,16 +80,19 @@ public class CovidPlanner {
 
     @Path("update")
     @POST
-    @Consumes(MediaType.APPLICATION_JSON)
-    public void UpdateLocation(@QueryParam("location") String location) {
+    public String UpdateLocation(@QueryParam("location") String location) {
+        System.out.println("Called update with "+location);
         // Fallzahlen von aktuellem Ort abfragen.
         String locationDistrict = getDistrict(location);
+        System.out.println("new locationDist: "+locationDistrict);
         Map<String, Integer> casesMap = new HashMap<>();
         casesMap.put(locationDistrict, -1);
         getDistrictWeekIncidence(casesMap);
         int locationCases = casesMap.get(locationDistrict);
+        System.out.println(locationDistrict+" cases: "+locationCases);
         // Lampe 1 entsprechend schalten.
         setTrafficLight(1, locationCases);
+        return "success";
     }
 
     @Path("end")
@@ -107,9 +109,10 @@ public class CovidPlanner {
 
     /**
      * Fills each entry of the given map with the districts associated current corona week incidence number.
+     *
      * @param districtCasesMap A Map<String, int> containing the wanted districts as keys.
      */
-    private void getDistrictWeekIncidence(Map<String, Integer> districtCasesMap){
+    private void getDistrictWeekIncidence(Map<String, Integer> districtCasesMap) {
         WebTarget rkiApi = client.target("https://rki-covid-api.now.sh/api/districts");
         String rkiResponse = rkiApi.request(MediaType.APPLICATION_JSON).get(String.class);
 
@@ -120,8 +123,9 @@ public class CovidPlanner {
                 JsonObject district = districts.getJsonObject(index);
                 String districtName = district.getString("name");
                 // Check whether any of the district names from the given map equal the current iterations district name.
-                for(String mapDistrictName : districtCasesMap.keySet()){
-                    if(districtName != null && districtName.equals(mapDistrictName))
+                for (String mapDistrictName : districtCasesMap.keySet()) {
+                    // We use contains instead of equals since there is no district "Berlin" but e.g. "Berlin Mitte".
+                    if (districtName != null && districtName.contains(mapDistrictName))
                         districtCasesMap.put(mapDistrictName, district.getInt("weekIncidence"));
                 }
             }
@@ -130,11 +134,12 @@ public class CovidPlanner {
 
     /**
      * Returns the time in seconds needed to travel from the origin to the destination. Returns -1 if it fails to do so.
-     * @param origin An address that specifies the origin location.
+     *
+     * @param origin      An address that specifies the origin location.
      * @param destination An address that specifies the destination location.
      * @return Travel time in seconds or -1 if it fails.
      */
-    private int getTravelDuration(String origin, String destination){
+    private int getTravelDuration(String origin, String destination) {
         int duration = -1;
         WebTarget mapsApi = client.target("https://maps.googleapis.com/maps/api/distancematrix/json")
                 .queryParam("units", "metric")
@@ -154,24 +159,54 @@ public class CovidPlanner {
 
     /**
      * Uses the google geocode api to return the district of the given location.
+     *
      * @param location An address that specifies the location.
      * @return The district of the given location. Returns an empty string if it fails to gather the district.
      */
-    private String getDistrict(String location){
-        String geoDistrict = "";
+    private String getDistrict(String location) {
         WebTarget geocodeApi = client.target("https://maps.googleapis.com/maps/api/geocode/json")
-                .queryParam("address", "München")
+                .queryParam("address", location)
                 .queryParam("sensor", "false")
+                .queryParam("language", "de")
                 .queryParam("key", "AIzaSyDMQoPhRGqPxTGNctZ5Mh3z1AIJ9uzQE2A");
         String geocodeResponse = geocodeApi.request(MediaType.APPLICATION_JSON).get(String.class);
-        try (JsonReader reader = Json.createReader(new StringReader(geocodeResponse));) {
-            JsonObject jsonObject = reader.readObject();
-            geoDistrict = jsonObject.getJsonArray("results").getJsonObject(0).getJsonArray("address_components")
-                    .getJsonObject(1).getString("long_name");
+        return getDistrictFromJson(geocodeResponse);
+    }
+
+    private String getDistrictFromJson(String json) {
+        String districtName = null;
+        try (JsonReader reader = Json.createReader(new StringReader(json));) {
+            JsonArray addressComp = reader.readObject().getJsonArray("results").getJsonObject(0).getJsonArray("address_components");
+
+            districtName = getAreaLevel3(addressComp);
+            if (districtName == null)
+                districtName = getNormalName(addressComp);
+
         } catch (Exception e) {
             System.err.println("could not parse google geocode api response.");
         }
-        return geoDistrict;
+        return districtName == null ? "" : districtName;
+    }
+
+    private String getNormalName(JsonArray addressComp) {
+        String districtName = null;
+        for (int index = 0; index < addressComp.size() && districtName == null; ++index) {
+            JsonObject subComp = addressComp.getJsonObject(index);
+            JsonArray types = subComp.getJsonArray("types");
+            if (types.toString().contains("locality") && types.toString().contains("political"))
+                districtName = subComp.getString("long_name");
+        }
+        return districtName;
+    }
+
+    private String getAreaLevel3(JsonArray addressComp) {
+        String districtArea3 = null;
+        for (int index = 0; index < addressComp.size() && districtArea3 == null; ++index) {
+            JsonObject subComp = addressComp.getJsonObject(index);
+            if (subComp.getJsonArray("types").toString().contains("administrative_area_level_3"))
+                districtArea3 = subComp.getString("long_name");
+        }
+        return districtArea3;
     }
 
     /**
@@ -191,16 +226,5 @@ public class CovidPlanner {
             hueController.setLightState(lampId, true, COLOR_RED);
         else // More than 100 cases.
             hueController.setLampBlinkMode(lampId, COLOR_RED);
-    }
-
-    @PostConstruct
-    public void init() {
-        this.client = ClientBuilder.newClient();
-        hueController = new HueController("localhost", "702322b92a3c03046bf5b83a889c704", client);
-    }
-
-    @PreDestroy
-    public void destroy() {
-        this.client.close();
     }
 }
