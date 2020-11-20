@@ -1,11 +1,15 @@
 import javax.json.Json;
+import javax.json.JsonArray;
 import javax.json.JsonObject;
 import javax.json.JsonObjectBuilder;
 import javax.json.JsonReader;
+import javax.ws.rs.ProcessingException;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.MediaType;
+import java.io.IOError;
+import java.io.IOException;
 import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
@@ -81,7 +85,26 @@ public class HueController {
             bridgeUsername = getBridgeUsername();
 
         WebTarget lampStateApi = client.target("http://" + bridgeIpAddr + "/api/" + bridgeUsername + "/lights/" + lampNr + "/state");
-        lampStateApi.request().put(Entity.json(stateJson));
+        try {
+            String hueResponse = lampStateApi.request().put(Entity.json(stateJson), String.class);
+            if(!isSuccessResponse(hueResponse))
+                System.err.println("Failed to set every attribute of lamp #"+lampNr);
+        }catch (ProcessingException e){
+            System.err.println("Failed to connect to the bridge");
+            e.printStackTrace();
+        }
+    }
+
+    private boolean isSuccessResponse(String response){
+        boolean success = true;
+        try(JsonReader reader = Json.createReader(new StringReader(response))){
+            JsonArray responseArray = reader.readArray();
+            for(int index = 0; index < responseArray.size(); ++index){
+                if(!responseArray.getJsonObject(index).containsKey("success"))
+                    success = false;
+            }
+        }
+        return success;
     }
 
     private String getBridgeUsername() {
@@ -112,7 +135,6 @@ public class HueController {
                 username = jsonObject.getJsonObject("success").getJsonString("username").getString();
             }
         }
-        System.out.println(username);
         return username;
     }
 }
