@@ -1,11 +1,7 @@
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import javax.json.Json;
 import javax.json.JsonArray;
 import javax.json.JsonObject;
 import javax.json.JsonReader;
-import javax.ws.rs.Consumes;
-import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
@@ -18,8 +14,13 @@ import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Represents the resource "covid-planner" of a REST API and offers three post methods to start, update and end a route.
+ * @author Michael Vogginger, Andreas Urlberger
+ */
 @Path("/covid-planner")
 public class CovidPlanner {
+
 
     private static final int GREEN_THRESHOLD = 19;
     private static final int ORANGE_THRESHOLD = 50;
@@ -33,29 +34,46 @@ public class CovidPlanner {
 
     private static final String MAPS_API_KEY = "AIzaSyCrSXZCLikclqLeOkQSktOQ3pTL-rXaZmc";
 
-    private static final String BRIDGE_IP = "192.168.178.92";
-    private static final String BRIDGE_USERNAME = "r0vUXAhhNiHy6CT3oLBlTBMECbykzVobj11KmGyG";
+    private static final String BRIDGE_IP = "localhost";
+    private static final String BRIDGE_USERNAME = "e86cf70ca36cec93e89fc4acc579e0c";
 
     private final Client client;
     private final HueController hueController;
 
-    public CovidPlanner(){
+    /**
+     * Basic constructor setting up the CovidPlanner.
+     */
+    public CovidPlanner() {
         client = ClientBuilder.newClient();
-        hueController = new HueController("localhost", "702322b92a3c03046bf5b83a889c704", client);
+        hueController = HueController.getInstance(BRIDGE_IP, BRIDGE_USERNAME, client);
     }
 
+    /**
+     * Can be called via a http post request and plans a route from a given origin to a given destination and sets the
+     * light state of 3 Philips Hue lamps. The first lamp represents the current week incidence of the origin district.
+     * The second represents the current week incidence of the destination district. The third indicates if the travel
+     * time is smaller or greater than a specified value.
+     *
+     * @param origin      The origin location.
+     * @param destination The destination location.
+     * @return A String containing basic information about the travel time and the week incidence of the origin and
+     * destination district.
+     */
     @Path("start")
     @POST
     @Produces(MediaType.APPLICATION_JSON)
-    public String planRoute(@QueryParam("origin") String origin, @QueryParam("destination") String destination) {
-        System.out.println("Called PlanRoute with: origin = " + origin + " and destination = " + destination);
+    public String newRoute(@QueryParam("origin") String origin, @QueryParam("destination") String destination) {
+        if (origin == null || destination == null) {
+            System.err.println("Can not set up a new route without a origin and destination.");
+            return "Can not set up a new route without a origin and destination.";
+        }
+
         // Gesamtdauer berechnen.
         int duration = getTravelDuration(origin, destination);
 
         // Landkreis für RKI API ermitteln
         String originDistrict = getDistrict(origin);
         String destinationDistrict = getDistrict(destination);
-        System.out.println("originDist: " + originDistrict + " destDist: " + destinationDistrict);
 
         // Startort und Zielort nach Faellen abfragen.
         Map<String, Integer> casesPerDistrict = new HashMap<>();
@@ -78,23 +96,34 @@ public class CovidPlanner {
     }
 
 
+    /**
+     * Can be called via a http post request and updates the location of the current user. Lamp #1 gets updated to
+     * represent the new districts week incidence.
+     *
+     * @param location The updated user location.
+     * @return Returns the message "success" to tell that it finished the update.
+     */
     @Path("update")
     @POST
     public String UpdateLocation(@QueryParam("location") String location) {
-        System.out.println("Called update with "+location);
         // Fallzahlen von aktuellem Ort abfragen.
         String locationDistrict = getDistrict(location);
-        System.out.println("new locationDist: "+locationDistrict);
         Map<String, Integer> casesMap = new HashMap<>();
         casesMap.put(locationDistrict, -1);
         getDistrictWeekIncidence(casesMap);
         int locationCases = casesMap.get(locationDistrict);
-        System.out.println(locationDistrict+" cases: "+locationCases);
+        System.out.println(locationDistrict + " cases: " + locationCases);
         // Lampe 1 entsprechend schalten.
         setTrafficLight(1, locationCases);
         return "success";
     }
 
+    /**
+     * Can be called via a http post request to tell the server that the user has reached his destination. In response
+     * all lamps are turned off.
+     *
+     * @return Returns the message "success" to tell that it finished its tasks.
+     */
     @Path("end")
     @POST
     @Produces(MediaType.TEXT_PLAIN)
@@ -103,7 +132,6 @@ public class CovidPlanner {
         hueController.setLightState(1, false, 0);
         hueController.setLightState(2, false, 0);
         hueController.setLightState(3, false, 0);
-
         return "success";
     }
 
@@ -173,6 +201,12 @@ public class CovidPlanner {
         return getDistrictFromJson(geocodeResponse);
     }
 
+    /**
+     * Tries to retrieve the district's name from the google geocode api's json response.
+     *
+     * @param json The google geocode api response.
+     * @return The districts name or null if it was not found.
+     */
     private String getDistrictFromJson(String json) {
         String districtName = null;
         try (JsonReader reader = Json.createReader(new StringReader(json));) {
@@ -188,6 +222,12 @@ public class CovidPlanner {
         return districtName == null ? "" : districtName;
     }
 
+    /**
+     * Returns the address component with the types "locality" and "political".
+     *
+     * @param addressComp A JsonArray containing the address components of the google geocode api json response.
+     * @return The address component with the types "locality" and "political".
+     */
     private String getNormalName(JsonArray addressComp) {
         String districtName = null;
         for (int index = 0; index < addressComp.size() && districtName == null; ++index) {
@@ -199,6 +239,12 @@ public class CovidPlanner {
         return districtName;
     }
 
+    /**
+     * Returns the address component with the type "administrative_area_level_3".
+     *
+     * @param addressComp A JsonArray containing the address components of the google geocode api json response.
+     * @return The address component with the type "administrative_area_level_3".
+     */
     private String getAreaLevel3(JsonArray addressComp) {
         String districtArea3 = null;
         for (int index = 0; index < addressComp.size() && districtArea3 == null; ++index) {

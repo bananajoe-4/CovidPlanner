@@ -23,9 +23,9 @@ public class HueController {
     private final Map<Integer, ScheduledExecutorService> blinkingLamps = new HashMap<>();
     private static final int BLINK_PERIOD_DURATION = 750;
     private final Client client;
-    private final int id = (int) (Math.random() * Integer.MAX_VALUE);
+    private static HueController instance;
 
-    public HueController(String bridgeIpAddr, Client client) {
+    private HueController(String bridgeIpAddr, Client client) {
         if (bridgeIpAddr == null || bridgeIpAddr.length() == 0)
             throw new IllegalArgumentException(bridgeIpAddr + " ist keine gueltige Ip Adresse.");
         if (client == null)
@@ -34,14 +34,32 @@ public class HueController {
         this.client = client;
     }
 
-    public HueController(String bridgeIpAddr, String bridgeUsername, Client client) {
+    private HueController(String bridgeIpAddr, String bridgeUsername, Client client) {
         this(bridgeIpAddr, client);
         if (bridgeUsername == null || bridgeUsername.length() == 0)
             throw new IllegalArgumentException(bridgeUsername + " ist kein gueltiger username.");
         this.bridgeUsername = bridgeUsername;
     }
 
+    public static HueController getInstance(String bridgeIpAddr, Client client){
+        if(instance == null)
+            instance = new HueController(bridgeIpAddr, client);
+
+        return instance;
+    }
+
+    public static HueController getInstance(String bridgeIpAddr, String bridgeUsername, Client client){
+        if(instance == null)
+            instance = new HueController(bridgeIpAddr, bridgeUsername, client);
+
+        return instance;
+    }
+
+
     public void setLampBlinkMode(int lampId, int color, int periodDuration) {
+        if(bridgeUsername == null)
+            bridgeUsername = getBridgeUsername();
+
         if(blinkingLamps.containsKey(lampId))
             stopBlinkingLamp(lampId);
 
@@ -70,10 +88,8 @@ public class HueController {
     }
 
     public void setLightState(int lampNr, boolean isOn, int color){
-        if(blinkingLamps.containsKey(lampNr)) {
-            System.out.println("called setLightState and cancels blinking of lamp #"+lampNr);
+        if(blinkingLamps.containsKey(lampNr))
             stopBlinkingLamp(lampNr);
-        }
 
         setLightStateUnsecure(lampNr, isOn, color);
     }
