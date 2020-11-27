@@ -8,9 +8,6 @@ import javax.ws.rs.client.WebTarget;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Scanner;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 public class Main {
     public static void main(String... args) {
@@ -35,7 +32,7 @@ public class Main {
         server.shutdownNow();
     }
 
-    private static void runConsoleClient(){
+    private static void runConsoleClient() {
         Scanner scanner = new Scanner(System.in);
         System.out.println("type \"new route\" to start a new route \ntype \"shutdown\" to shut down the server.");
         while (true) {
@@ -55,7 +52,7 @@ public class Main {
 
                 target.request().post(null);
                 System.out.println("The server is now ready for location updates.");
-            }else{
+            } else {
                 System.out.println("unknown command");
             }
         }

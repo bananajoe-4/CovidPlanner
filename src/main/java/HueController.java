@@ -41,15 +41,15 @@ public class HueController {
         this.bridgeUsername = bridgeUsername;
     }
 
-    public static HueController getInstance(String bridgeIpAddr, Client client){
-        if(instance == null)
+    public static HueController getInstance(String bridgeIpAddr, Client client) {
+        if (instance == null)
             instance = new HueController(bridgeIpAddr, client);
 
         return instance;
     }
 
-    public static HueController getInstance(String bridgeIpAddr, String bridgeUsername, Client client){
-        if(instance == null)
+    public static HueController getInstance(String bridgeIpAddr, String bridgeUsername, Client client) {
+        if (instance == null)
             instance = new HueController(bridgeIpAddr, bridgeUsername, client);
 
         return instance;
@@ -57,10 +57,10 @@ public class HueController {
 
 
     public void setLampBlinkMode(int lampId, int color, int periodDuration) {
-        if(bridgeUsername == null)
+        if (bridgeUsername == null)
             bridgeUsername = getBridgeUsername();
 
-        if(blinkingLamps.containsKey(lampId))
+        if (blinkingLamps.containsKey(lampId))
             stopBlinkingLamp(lampId);
 
         Runnable lampBlinker = new Runnable() {
@@ -87,8 +87,8 @@ public class HueController {
             blinker.shutdownNow();
     }
 
-    public void setLightState(int lampNr, boolean isOn, int color){
-        if(blinkingLamps.containsKey(lampNr))
+    public void setLightState(int lampNr, boolean isOn, int color) {
+        if (blinkingLamps.containsKey(lampNr))
             stopBlinkingLamp(lampNr);
 
         setLightStateUnsecure(lampNr, isOn, color);
@@ -116,7 +116,6 @@ public class HueController {
                 System.err.println("Failed to set every attribute of lamp #" + lampNr);
         } catch (ProcessingException e) {
             System.err.println("Failed to connect to the bridge");
-            e.printStackTrace();
         }
     }
 

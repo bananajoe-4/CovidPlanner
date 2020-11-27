@@ -16,6 +16,7 @@ import java.util.Map;
 
 /**
  * Represents the resource "covid-planner" of a REST API and offers three post methods to start, update and end a route.
+ *
  * @author Michael Vogginger, Andreas Urlberger
  */
 @Path("/covid-planner")
@@ -82,7 +83,6 @@ public class CovidPlanner {
         getDistrictWeekIncidence(casesPerDistrict);
         int casesOrigin = casesPerDistrict.get(originDistrict);
         int casesDestination = casesPerDistrict.get(destinationDistrict);
-        System.out.println("cases in " + originDistrict + ": " + casesOrigin + ", cases in " + destinationDistrict + ": " + casesDestination);
 
         // Lampen entsprechend schalten.
         setTrafficLight(1, casesOrigin);
